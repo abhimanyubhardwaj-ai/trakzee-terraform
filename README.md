@@ -44,8 +44,6 @@ flowchart LR
 
 The infrastructure was originally created manually, but the pattern was repeated for each service. This Terraform version consolidates the common pieces into a reusable structure so the environment stays consistent and easier to manage.
 
-The most important operational requirement is that EC2 instance security groups must allow traffic from the ALB on the ECS dynamic port range (`32768-65535`). This was a real production issue and can lead to failed health checks if not configured correctly.
-
 ## Prerequisites
 
 The following resources must already exist before running this Terraform configuration:
