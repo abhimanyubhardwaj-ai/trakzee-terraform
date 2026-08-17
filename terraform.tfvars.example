@@ -1,0 +1,153 @@
+# Copy this file to terraform.tfvars and fill in the real values
+# for your account before running terraform apply.
+
+region     = "ap-south-1"
+account_id = "389758363574"
+
+cluster_name = "Trakzee4-Cluster" # change per environment, e.g. Trakzee2-Cluster / Trakzee3-Cluster / Trakzee4-Cluster
+
+# --- Networking - fill in with real values from your VPC ---
+vpc_id         = "vpc-xxxxxxxxxxxxxxxxx"
+subnet_ids     = ["subnet-xxxxxxxxxxxxxxxxx", "subnet-yyyyyyyyyyyyyyyyy"]
+alb_subnet_ids = ["subnet-xxxxxxxxxxxxxxxxx", "subnet-yyyyyyyyyyyyyyyyy"]
+
+# IMPORTANT - this SG must allow inbound TCP 32768-65535 from
+# alb_security_group_id below. This was the exact root cause of
+# the Trakzee2 outage documented separately (Target.FailedHealthChecks
+# because the ALB could not reach the ECS dynamic port range).
+instance_security_group_id = "sg-d69860bd"
+alb_security_group_id      = "sg-09d0f3a15bc885344"
+
+key_name                  = "your-ec2-keypair-name"
+ecs_ami_id                = "ami-xxxxxxxxxxxxxxxxx" # latest ECS-optimized Amazon Linux 2023 AMI for ap-south-1
+iam_instance_profile_name = "ecsInstanceRole"
+
+common_tags = {
+  Project     = "Trakzee4asg"
+  Environment = "Production"
+}
+
+# ============================================================
+# TO ADD A NEW MICROSERVICE: copy one block below, rename the
+# key (e.g. "billing"), change the values, run:
+#   terraform plan
+#   terraform apply
+# That's it - Terraform creates everything for it: 2 launch
+# templates, 2 ASGs, 2 capacity providers, 2 task definitions,
+# 2 ECS services, 1 target group, 1 listener rule, and 1
+# autoscaling policy on the secondary. Nothing else needs editing.
+# ============================================================
+services = {
+  vts = {
+    ecr_repo              = "vts-prod"
+    container_name        = "VTSApp"
+    container_port        = 8080
+    health_check_path     = "/jsp/login.jsp"
+    health_check_matcher  = "200"
+    path_pattern          = ["/jsp/*"]
+    listener_priority     = 10
+
+    primary = {
+      cpu           = 16384 # 16 vCPU
+      memory        = 32768 # 32 GiB
+      instance_type = "c5a.4xlarge"
+      desired_count = 1
+    }
+
+    secondary = {
+      cpu                = 8192 # 8 vCPU
+      memory             = 16384 # 16 GiB
+      instance_type      = "c5a.2xlarge"
+      min_capacity       = 0
+      max_capacity       = 2
+      cpu_target_value   = 70
+      scale_out_cooldown = 60
+      scale_in_cooldown  = 300
+    }
+  }
+
+  livetracking = {
+    ecr_repo              = "livetracking-prod"
+    container_name        = "LiveTrackingApp"
+    container_port        = 8080
+    health_check_path     = "/LiveTrackingDashBoardMicroService/"
+    health_check_matcher  = "200-499" # LiveTracking returns 403 on this path by design - see incident notes
+    path_pattern          = ["/LiveTrackingDashBoardMicroService/*"]
+    listener_priority     = 20
+
+    primary = {
+      cpu           = 8192
+      memory        = 16384
+      instance_type = "c5a.2xlarge"
+      desired_count = 1
+    }
+
+    secondary = {
+      cpu                = 4096
+      memory             = 8192
+      instance_type      = "c5a.xlarge"
+      min_capacity       = 0
+      max_capacity       = 2
+      cpu_target_value   = 70
+      scale_out_cooldown = 60
+      scale_in_cooldown  = 300
+    }
+  }
+
+  report = {
+    ecr_repo              = "report-prod"
+    container_name        = "ReportApp"
+    container_port        = 8080
+    health_check_path     = "/ReportServices/"
+    health_check_matcher  = "200-499" # Report also returns 403 on this path by design - see incident notes
+    path_pattern          = ["/ReportServices/*"]
+    listener_priority     = 30
+
+    primary = {
+      cpu           = 4096
+      memory        = 8192
+      instance_type = "c5a.xlarge"
+      desired_count = 1
+    }
+
+    secondary = {
+      cpu                = 2048
+      memory             = 4096
+      instance_type      = "c5a.large"
+      min_capacity       = 0
+      max_capacity       = 2
+      cpu_target_value   = 70
+      scale_out_cooldown = 60
+      scale_in_cooldown  = 300
+    }
+  }
+
+  # --- EXAMPLE: uncomment and edit to add a brand new service ---
+  # billing = {
+  #   ecr_repo              = "billing-prod"
+  #   container_name        = "BillingApp"
+  #   container_port        = 8080
+  #   health_check_path     = "/BillingServices/"
+  #   health_check_matcher  = "200"
+  #   path_pattern          = ["/BillingServices/*"]
+  #   listener_priority     = 40
+  #
+  #   primary = {
+  #     cpu           = 4096
+  #     memory        = 8192
+  #     instance_type = "c5a.xlarge"
+  #     desired_count = 1
+  #   }
+  #
+  #   secondary = {
+  #     cpu                = 2048
+  #     memory             = 4096
+  #     instance_type      = "c5a.large"
+  #     min_capacity       = 0
+  #     max_capacity       = 2
+  #     cpu_target_value   = 70
+  #     scale_out_cooldown = 60
+  #     scale_in_cooldown  = 300
+  #   }
+  # }
+}
